@@ -275,7 +275,7 @@ export class SplitLinesCollection implements ILinesCollection {
 		this.wrappingIndent = wrappingIndent;
 		this.linePositionMapperFactory = linePositionMapperFactory;
 
-		this.constructLines();
+		this._constructLines(true);
 
 		this.tmpIndexOfResult = {
 			index: 0,
@@ -294,16 +294,34 @@ export class SplitLinesCollection implements ILinesCollection {
 		}
 	}
 
-	private constructLines(): void {
+	private _constructLines(resetHiddenAreas:boolean): void {
 		this.lines = [];
-		this.hiddenAreasIds = [];
 
-		var line:ISplitLine,
-			values:number[] = [],
-			linesContent = this.model.getLinesContent();
+		if (resetHiddenAreas) {
+			this.hiddenAreasIds = [];
+		}
 
-		for (var i = 0, lineCount = linesContent.length; i < lineCount; i++) {
-			line = createSplitLine(this.linePositionMapperFactory, linesContent[i], this.tabSize, this.wrappingColumn, this.columnsForFullWidthChar, this.wrappingIndent, true);
+		let values:number[] = [];
+		let linesContent = this.model.getLinesContent();
+		let lineCount = linesContent.length;
+
+		let hiddenAreas = this.hiddenAreasIds.map((areaId) => this.model.getDecorationRange(areaId)).sort(Range.compareRangesUsingStarts);
+		let hiddenAreaStart = 1, hiddenAreaEnd = 0;
+		let hiddenAreaIdx = -1;
+		let nextLineNumberToUpdateHiddenArea = (hiddenAreaIdx + 1 < hiddenAreas.length) ? hiddenAreaEnd + 1 : lineCount + 2;
+
+		for (let i = 0; i < lineCount; i++) {
+			let lineNumber = i + 1;
+
+			if (lineNumber === nextLineNumberToUpdateHiddenArea) {
+				hiddenAreaIdx++;
+				hiddenAreaStart = hiddenAreas[hiddenAreaIdx].startLineNumber;
+				hiddenAreaEnd = hiddenAreas[hiddenAreaIdx].endLineNumber;
+				nextLineNumberToUpdateHiddenArea = (hiddenAreaIdx + 1 < hiddenAreas.length) ? hiddenAreaEnd + 1 : lineCount + 2;
+			}
+
+			let isInHiddenArea = (lineNumber >= hiddenAreaStart && lineNumber <= hiddenAreaEnd);
+			let line = createSplitLine(this.linePositionMapperFactory, linesContent[i], this.tabSize, this.wrappingColumn, this.columnsForFullWidthChar, this.wrappingIndent, !isInHiddenArea);
 			values[i] = line.getOutputLineCount();
 			this.lines[i] = line;
 		}
@@ -344,7 +362,7 @@ export class SplitLinesCollection implements ILinesCollection {
 		return result;
 	}
 
-	public setHiddenAreas(_ranges:editorCommon.IRange[], emit:(evenType:string, payload:any)=>void): void {
+	public setHiddenAreas(_ranges:editorCommon.IRange[], emit:(evenType:string, payload:any)=>void): boolean {
 
 		let newRanges = this._reduceRanges(_ranges);
 
@@ -360,13 +378,13 @@ export class SplitLinesCollection implements ILinesCollection {
 				}
 			}
 			if (!hasDifference) {
-				return;
+				return false;
 			}
 		}
 		// END TODO@Martin: Please stop calling this method on each model change!
 
-		var newDecorations:editorCommon.IModelDeltaDecoration[] = [];
-		for (var i = 0; i < newRanges.length; i++) {
+		let newDecorations:editorCommon.IModelDeltaDecoration[] = [];
+		for (let i = 0; i < newRanges.length; i++) {
 			newDecorations.push({
 				range: newRanges[i],
 				options: {
@@ -376,13 +394,13 @@ export class SplitLinesCollection implements ILinesCollection {
 
 		this.hiddenAreasIds = this.model.deltaDecorations(this.hiddenAreasIds, newDecorations);
 
-		var hiddenAreas = newRanges;
-		var hiddenAreaStart = 1, hiddenAreaEnd = 0;
-		var hiddenAreaIdx = -1;
-		var nextLineNumberToUpdateHiddenArea = (hiddenAreaIdx + 1 < hiddenAreas.length) ? hiddenAreaEnd + 1 : this.lines.length + 2;
+		let hiddenAreas = newRanges;
+		let hiddenAreaStart = 1, hiddenAreaEnd = 0;
+		let hiddenAreaIdx = -1;
+		let nextLineNumberToUpdateHiddenArea = (hiddenAreaIdx + 1 < hiddenAreas.length) ? hiddenAreaEnd + 1 : this.lines.length + 2;
 
-		for (var i = 0; i < this.lines.length; i++) {
-			var lineNumber = i + 1;
+		for (let i = 0; i < this.lines.length; i++) {
+			let lineNumber = i + 1;
 
 			if (lineNumber === nextLineNumberToUpdateHiddenArea) {
 				hiddenAreaIdx++;
@@ -391,7 +409,7 @@ export class SplitLinesCollection implements ILinesCollection {
 				nextLineNumberToUpdateHiddenArea = (hiddenAreaIdx + 1 < hiddenAreas.length) ? hiddenAreaEnd + 1 : this.lines.length + 2;
 			}
 
-			var lineChanged = false;
+			let lineChanged = false;
 			if (lineNumber >= hiddenAreaStart && lineNumber <= hiddenAreaEnd) {
 				// Line should be hidden
 				if (this.lines[i].isVisible()) {
@@ -406,12 +424,21 @@ export class SplitLinesCollection implements ILinesCollection {
 				}
 			}
 			if (lineChanged) {
-				var newOutputLineCount = this.lines[i].getOutputLineCount();
+				let newOutputLineCount = this.lines[i].getOutputLineCount();
 				this.prefixSumComputer.changeValue(i, newOutputLineCount);
 			}
 		}
 
 		emit(editorCommon.ViewEventNames.ModelFlushedEvent, null);
+		return true;
+	}
+
+	public inputPositionIsVisible(inputLineNumber:number, inputColumn:number): boolean {
+		if (inputLineNumber < 1 || inputLineNumber > this.lines.length) {
+			// invalid arguments
+			return false;
+		}
+		return this.lines[inputLineNumber - 1].isVisible();
 	}
 
 	public setTabSize(newTabSize:number, emit:(evenType:string, payload:any)=>void): boolean {
@@ -420,7 +447,7 @@ export class SplitLinesCollection implements ILinesCollection {
 		}
 		this.tabSize = newTabSize;
 
-		this.constructLines();
+		this._constructLines(false);
 		emit(editorCommon.ViewEventNames.ModelFlushedEvent, null);
 
 		return true;
@@ -432,7 +459,7 @@ export class SplitLinesCollection implements ILinesCollection {
 		}
 		this.wrappingIndent = newWrappingIndent;
 
-		this.constructLines();
+		this._constructLines(false);
 		emit(editorCommon.ViewEventNames.ModelFlushedEvent, null);
 
 		return true;
@@ -444,14 +471,14 @@ export class SplitLinesCollection implements ILinesCollection {
 		}
 		this.wrappingColumn = newWrappingColumn;
 		this.columnsForFullWidthChar = columnsForFullWidthChar;
-		this.constructLines();
+		this._constructLines(false);
 		emit(editorCommon.ViewEventNames.ModelFlushedEvent, null);
 
 		return true;
 	}
 
 	public onModelFlushed(versionId:number, emit:(evenType:string, payload:any)=>void): void {
-		this.constructLines();
+		this._constructLines(true);
 		emit(editorCommon.ViewEventNames.ModelFlushedEvent, null);
 	}
 
@@ -595,8 +622,20 @@ export class SplitLinesCollection implements ILinesCollection {
 		return this.prefixSumComputer.getTotalValue();
 	}
 
+	private _toValidOutputLineNumber(outputLineNumber: number): number {
+		if (outputLineNumber < 1) {
+			return 1;
+		}
+		let outputLineCount = this.getOutputLineCount();
+		if (outputLineNumber > outputLineCount) {
+			return outputLineCount;
+		}
+		return outputLineNumber;
+	}
+
 	public getOutputLineContent(outputLineNumber: number): string {
 		this._ensureValidState();
+		outputLineNumber = this._toValidOutputLineNumber(outputLineNumber);
 		this.prefixSumComputer.getIndexOf(outputLineNumber - 1, this.tmpIndexOfResult);
 		var lineIndex = this.tmpIndexOfResult.index;
 		var remainder = this.tmpIndexOfResult.remainder;
@@ -606,6 +645,7 @@ export class SplitLinesCollection implements ILinesCollection {
 
 	public getOutputLineMinColumn(outputLineNumber:number): number {
 		this._ensureValidState();
+		outputLineNumber = this._toValidOutputLineNumber(outputLineNumber);
 		this.prefixSumComputer.getIndexOf(outputLineNumber - 1, this.tmpIndexOfResult);
 		var lineIndex = this.tmpIndexOfResult.index;
 		var remainder = this.tmpIndexOfResult.remainder;
@@ -615,6 +655,7 @@ export class SplitLinesCollection implements ILinesCollection {
 
 	public getOutputLineMaxColumn(outputLineNumber: number): number {
 		this._ensureValidState();
+		outputLineNumber = this._toValidOutputLineNumber(outputLineNumber);
 		this.prefixSumComputer.getIndexOf(outputLineNumber - 1, this.tmpIndexOfResult);
 		var lineIndex = this.tmpIndexOfResult.index;
 		var remainder = this.tmpIndexOfResult.remainder;
@@ -624,6 +665,7 @@ export class SplitLinesCollection implements ILinesCollection {
 
 	public getOutputLineTokens(outputLineNumber: number, inaccurateTokensAcceptable: boolean): editorCommon.IViewLineTokens {
 		this._ensureValidState();
+		outputLineNumber = this._toValidOutputLineNumber(outputLineNumber);
 		this.prefixSumComputer.getIndexOf(outputLineNumber - 1, this.tmpIndexOfResult);
 		var lineIndex = this.tmpIndexOfResult.index;
 		var remainder = this.tmpIndexOfResult.remainder;
@@ -633,20 +675,23 @@ export class SplitLinesCollection implements ILinesCollection {
 
 	public convertOutputPositionToInputPosition(viewLineNumber: number, viewColumn: number): editorCommon.IEditorPosition {
 		this._ensureValidState();
+		viewLineNumber = this._toValidOutputLineNumber(viewLineNumber);
+
 		this.prefixSumComputer.getIndexOf(viewLineNumber - 1, this.tmpIndexOfResult);
 		var lineIndex = this.tmpIndexOfResult.index;
 		var remainder = this.tmpIndexOfResult.remainder;
 
 		var inputColumn = this.lines[lineIndex].getInputColumnOfOutputPosition(remainder, viewColumn);
-//		console.log('out -> in ' + viewLineNumber + ',' + viewColumn + ' ===> ' + (lineIndex+1) + ',' + inputColumn);
-		return new Position(lineIndex+1, inputColumn);
+		// console.log('out -> in ' + viewLineNumber + ',' + viewColumn + ' ===> ' + (lineIndex+1) + ',' + inputColumn);
+		return this.model.validatePosition(new Position(lineIndex+1, inputColumn));
 	}
 
-	public convertInputPositionToOutputPosition(inputLineNumber: number, inputColumn: number): editorCommon.IEditorPosition {
+	public convertInputPositionToOutputPosition(_inputLineNumber: number, _inputColumn: number): editorCommon.IEditorPosition {
 		this._ensureValidState();
-		if (inputLineNumber > this.lines.length) {
-			inputLineNumber = this.lines.length;
-		}
+
+		let validPosition = this.model.validatePosition(new Position(_inputLineNumber, _inputColumn));
+		let inputLineNumber = validPosition.lineNumber;
+		let inputColumn = validPosition.column;
 
 		let lineIndex = inputLineNumber - 1, lineIndexChanged = false;
 		while (lineIndex > 0 && !this.lines[lineIndex].isVisible()) {
@@ -655,6 +700,7 @@ export class SplitLinesCollection implements ILinesCollection {
 		}
 		if (lineIndex === 0 && !this.lines[lineIndex].isVisible()) {
 			// Could not reach a real line
+			// console.log('in -> out ' + inputLineNumber + ',' + inputColumn + ' ===> ' + 1 + ',' + 1);
 			return new Position(1, 1);
 		}
 		var deltaLineNumber = 1 + (lineIndex === 0 ? 0 : this.prefixSumComputer.getAccumulatedValue(lineIndex - 1));
@@ -666,7 +712,7 @@ export class SplitLinesCollection implements ILinesCollection {
 			r = this.lines[inputLineNumber - 1].getOutputPositionOfInputPosition(deltaLineNumber, inputColumn);
 		}
 
-//		console.log('in -> out ' + inputLineNumber + ',' + inputColumn + ' ===> ' + r.lineNumber + ',' + r.column);
+		// console.log('in -> out ' + inputLineNumber + ',' + inputColumn + ' ===> ' + r.lineNumber + ',' + r);
 		return r;
 	}
 }

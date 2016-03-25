@@ -69,6 +69,7 @@ export class CodeSnippet implements ICodeSnippet {
 	}
 
 	private parseTemplate(template: string): void {
+
 		var placeHoldersMap: collections.IStringDictionary<IPlaceHolder> = {};
 		var i: number, len: number, j: number, lenJ: number, templateLines = template.split('\n');
 
@@ -281,7 +282,11 @@ export class CodeSnippet implements ICodeSnippet {
 			// Escapes
 			if (/^\\./.test(restOfLine)) {
 				i += 2;
-				convertedSnippet += restOfLine.substr(0, 2);
+				if (/^\\\$/.test(restOfLine)) {
+					convertedSnippet += '$';
+				} else {
+					convertedSnippet += restOfLine.substr(0, 2);
+				}
 				continue;
 			}
 
@@ -771,8 +776,8 @@ class SnippetController implements ISnippetController {
 		return typeRange;
 	}
 
-	private static _getAdaptedSnippet(editor:editorCommon.ICommonCodeEditor, model:editorCommon.IModel, snippet:CodeSnippet, typeRange:editorCommon.IEditorRange): ICodeSnippet {
-		return snippet.bind(model.getLineContent(typeRange.startLineNumber), typeRange.startLineNumber - 1, typeRange.startColumn - 1, editor);
+	private static _getAdaptedSnippet(model:editorCommon.IModel, snippet:CodeSnippet, typeRange:editorCommon.IEditorRange): ICodeSnippet {
+		return snippet.bind(model.getLineContent(typeRange.startLineNumber), typeRange.startLineNumber - 1, typeRange.startColumn - 1, model);
 	}
 
 	private static _addCommandForSnippet(model:editorCommon.ITextModel, adaptedSnippet:ICodeSnippet, typeRange:editorCommon.IEditorRange, out:editorCommon.IIdentifiedSingleEditOperation[]): void {
@@ -838,7 +843,7 @@ class SnippetController implements ISnippetController {
 			}
 		}
 
-		var adaptedSnippet = SnippetController._getAdaptedSnippet(editor, model, snippet, typeRange);
+		var adaptedSnippet = SnippetController._getAdaptedSnippet(model, snippet, typeRange);
 		return {
 			typeRange: typeRange,
 			adaptedSnippet: adaptedSnippet
@@ -906,6 +911,6 @@ CommonEditorRegistry.registerEditorCommand('jumpToPrevSnippetPlaceholder', weigh
 CommonEditorRegistry.registerEditorCommand('acceptSnippet', weight, { primary: KeyCode.Enter }, true, CONTEXT_SNIPPET_MODE,(ctx, editor, args) => {
 	getSnippetController(editor).acceptSnippet();
 });
-CommonEditorRegistry.registerEditorCommand('leaveSnippet', weight, { primary: KeyCode.Escape }, true, CONTEXT_SNIPPET_MODE,(ctx, editor, args) => {
+CommonEditorRegistry.registerEditorCommand('leaveSnippet', weight, { primary: KeyCode.Escape, secondary: [KeyMod.Shift | KeyCode.Escape] }, true, CONTEXT_SNIPPET_MODE,(ctx, editor, args) => {
 	getSnippetController(editor).leaveSnippet();
 });

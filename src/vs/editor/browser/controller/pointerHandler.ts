@@ -83,7 +83,7 @@ class MsPointerHandler extends MouseHandler implements IDisposable {
 		var e = new StandardMouseEvent(<MouseEvent><any>rawEvent);
 		var t = this._createMouseTarget(e, false);
 		if (t.position) {
-			this.viewController.moveTo('mouse', t.position.lineNumber, t.position.column);
+			this.viewController.moveTo('mouse', t.position);
 		}
 		// IE does not want to focus when coming in from the browser's address bar
 		if ((<any>e.browserEvent).fromElement) {
@@ -162,7 +162,7 @@ class StandardPointerHandler extends MouseHandler implements IDisposable {
 		var e = new StandardMouseEvent(<MouseEvent><any>rawEvent);
 		var t = this._createMouseTarget(e, false);
 		if (t.position) {
-			this.viewController.moveTo('mouse', t.position.lineNumber, t.position.column);
+			this.viewController.moveTo('mouse', t.position);
 		}
 		// IE does not want to focus when coming in from the browser's address bar
 		if ((<any>e.browserEvent).fromElement) {
@@ -198,6 +198,8 @@ class TouchHandler extends MouseHandler {
 
 		this.listenersToRemove.push(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Tap, (e) => this.onTap(e)));
 		this.listenersToRemove.push(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Change, (e) => this.onChange(e)));
+		this.listenersToRemove.push(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Contextmenu, (e: MouseEvent) => this._onContextMenu(e, false)));
+
 	}
 
 	public dispose(): void {
@@ -214,7 +216,7 @@ class TouchHandler extends MouseHandler {
 		var target = this._createMouseTarget(mouseEvent, false);
 
 		if (target.position) {
-			this.viewController.moveTo('mouse', target.position.lineNumber, target.position.column);
+			this.viewController.moveTo('mouse', target.position);
 		}
 	}
 

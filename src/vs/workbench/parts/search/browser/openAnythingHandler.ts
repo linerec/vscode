@@ -36,7 +36,7 @@ interface ISearchWithRange {
 export import OpenSymbolHandler = openSymbolHandler.OpenSymbolHandler;
 
 export class OpenAnythingHandler extends QuickOpenHandler {
-	private static LINE_COLON_PATTERN = /[#|:](\d*)([#|:](\d*))?$/;
+	private static LINE_COLON_PATTERN = /[#|:|\(](\d*)([#|:|,](\d*))?\)?$/;
 
 	private static SYMBOL_SEARCH_INITIAL_TIMEOUT = 500; // Ignore symbol search after a timeout to not block search results
 	private static SYMBOL_SEARCH_SUBSEQUENT_TIMEOUT = 100;
@@ -241,6 +241,9 @@ export class OpenAnythingHandler extends QuickOpenHandler {
 	}
 
 	public getResultsFromCache(searchValue: string, range: IRange = null): QuickOpenEntry[] {
+		if (paths.isAbsolute(searchValue)) {
+			return null; // bypass cache if user looks up an absolute path where matching goes directly on disk
+		}
 
 		// Find cache entries by prefix of search value
 		let cachedEntries: QuickOpenEntry[];

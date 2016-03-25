@@ -8,7 +8,6 @@ import * as nls from 'vs/nls';
 import {KeyCode, KeyMod} from 'vs/base/common/keyCodes';
 import {Disposable} from 'vs/base/common/lifecycle';
 import {TPromise} from 'vs/base/common/winjs.base';
-import {INullService} from 'vs/platform/instantiation/common/instantiation';
 import {IKeybindingContextKey, IKeybindingService, IKeybindings} from 'vs/platform/keybinding/common/keybindingService';
 import {Range} from 'vs/editor/common/core/range';
 import {Selection} from 'vs/editor/common/core/selection';
@@ -224,7 +223,7 @@ export class CommonFindController extends Disposable implements editorCommon.IEd
 
 export class StartFindAction extends EditorAction {
 
-	constructor(descriptor: editorCommon.IEditorActionDescriptorData, editor: editorCommon.ICommonCodeEditor, @INullService ns) {
+	constructor(descriptor: editorCommon.IEditorActionDescriptorData, editor: editorCommon.ICommonCodeEditor) {
 		super(descriptor, editor, Behaviour.WidgetFocus);
 	}
 
@@ -242,7 +241,7 @@ export class StartFindAction extends EditorAction {
 }
 
 export abstract class MatchFindAction extends EditorAction {
-	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor, @INullService ns) {
+	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor) {
 		super(descriptor, editor, Behaviour.WidgetFocus);
 	}
 
@@ -277,7 +276,7 @@ export class PreviousMatchFindAction extends MatchFindAction {
 }
 
 export abstract class SelectionMatchFindAction extends EditorAction {
-	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor, @INullService ns) {
+	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor) {
 		super(descriptor, editor, Behaviour.WidgetFocus);
 	}
 
@@ -317,7 +316,7 @@ export class PreviousSelectionMatchFindAction extends SelectionMatchFindAction {
 
 export class StartFindReplaceAction extends EditorAction {
 
-	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor, @INullService ns) {
+	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor) {
 		super(descriptor, editor, Behaviour.WidgetFocus | Behaviour.Writeable);
 	}
 
@@ -393,7 +392,7 @@ function multiCursorFind(editor:editorCommon.ICommonCodeEditor, changeFindSearch
 }
 
 export class SelectNextFindMatchAction extends EditorAction {
-	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor, @INullService ns) {
+	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor) {
 		super(descriptor, editor, Behaviour.WidgetFocus);
 	}
 
@@ -422,8 +421,8 @@ export class SelectNextFindMatchAction extends EditorAction {
 export class AddSelectionToNextFindMatchAction extends SelectNextFindMatchAction {
 	static ID = FIND_IDS.AddSelectionToNextFindMatchAction;
 
-	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor, @INullService ns) {
-		super(descriptor, editor, ns);
+	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor) {
+		super(descriptor, editor);
 	}
 
 	public run(): TPromise<boolean> {
@@ -444,8 +443,8 @@ export class AddSelectionToNextFindMatchAction extends SelectNextFindMatchAction
 export class MoveSelectionToNextFindMatchAction extends SelectNextFindMatchAction {
 	static ID = FIND_IDS.MoveSelectionToNextFindMatchAction;
 
-	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor, @INullService ns) {
-		super(descriptor, editor, ns);
+	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor) {
+		super(descriptor, editor);
 	}
 
 	public run(): TPromise<boolean> {
@@ -467,7 +466,7 @@ export class SelectHighlightsAction extends EditorAction {
 	static ID = 'editor.action.selectHighlights';
 	static COMPAT_ID = 'editor.action.changeAll';
 
-	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor, @INullService ns) {
+	constructor(descriptor:editorCommon.IEditorActionDescriptorData, editor:editorCommon.ICommonCodeEditor) {
 		let behaviour = Behaviour.WidgetFocus | Behaviour.Writeable;
 		if (descriptor.id === SelectHighlightsAction.COMPAT_ID) {
 			behaviour |= Behaviour.ShowInContextMenu;
@@ -500,16 +499,29 @@ export class SelectionHighlighter extends Disposable implements editorCommon.IEd
 	private editor: editorCommon.ICommonCodeEditor;
 	private decorations: string[];
 
-	constructor(editor:editorCommon.ICommonCodeEditor, @INullService ns) {
+	constructor(editor:editorCommon.ICommonCodeEditor) {
 		super();
 		this.editor = editor;
 		this.decorations = [];
 
-		this._register(editor.addListener2(editorCommon.EventType.CursorPositionChanged, _ => this._update()));
+		this._register(editor.addListener2(editorCommon.EventType.CursorSelectionChanged, (e: editorCommon.ICursorSelectionChangedEvent) => {
+			if (e.selection.isEmpty()) {
+				if (e.reason === 'explicit') {
+					this._update();
+				} else {
+					this.removeDecorations();
+
+				}
+			} else {
+				this._update();
+			}
+		}));
 		this._register(editor.addListener2(editorCommon.EventType.ModelChanged, (e) => {
 			this.removeDecorations();
 		}));
-		this._register(CommonFindController.getFindController(editor).getState().addChangeListener((e) => this._update()));
+		this._register(CommonFindController.getFindController(editor).getState().addChangeListener((e) => {
+			this._update();
+		}));
 	}
 
 	public getId(): string {
@@ -553,11 +565,21 @@ export class SelectionHighlighter extends Disposable implements editorCommon.IEd
 			this.removeDecorations();
 			return;
 		}
+		let selections = this.editor.getSelections();
+		let firstSelectedText = model.getValueInRange(selections[0]);
+		for (let i = 1; i < selections.length; i++) {
+			let selectedText = model.getValueInRange(selections[i]);
+			if (firstSelectedText !== selectedText) {
+				// not all selections have the same text
+				this.removeDecorations();
+				return;
+			}
+		}
+
 
 		let allMatches = model.findMatches(r.searchText, true, false, r.matchCase, r.wholeWord);
 		allMatches.sort(Range.compareRangesUsingStarts);
 
-		let selections = this.editor.getSelections();
 		selections.sort(Range.compareRangesUsingStarts);
 
 		// do not overlap with selection (issue #64 and #512)
@@ -666,7 +688,8 @@ function registerFindCommand(id:string, callback:(controller:CommonFindControlle
 }
 
 registerFindCommand(FIND_IDS.CloseFindWidgetCommand, x => x.closeFindWidget(), {
-	primary: KeyCode.Escape
+	primary: KeyCode.Escape,
+	secondary: [KeyMod.Shift | KeyCode.Escape]
 }, CONTEXT_FIND_WIDGET_VISIBLE);
 registerFindCommand(FIND_IDS.ToggleCaseSensitiveCommand, x => x.toggleCaseSensitive(), {
 	primary: KeyMod.Alt | KeyCode.KEY_C,

@@ -4,12 +4,23 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 
-import {IInternalIndentationOptions, IPosition} from 'vs/editor/common/editorCommon';
+import {IInternalIndentationOptions, IPosition, IEditorSelection} from 'vs/editor/common/editorCommon';
+import {Selection} from 'vs/editor/common/core/selection';
 
 export interface IMoveResult {
 	lineNumber:number;
 	column:number;
 	leftoverVisibleColumns: number;
+}
+
+export interface IViewColumnSelectResult {
+	viewSelections: IEditorSelection[];
+	reversed: boolean;
+}
+export interface IColumnSelectResult extends IViewColumnSelectResult {
+	selections: IEditorSelection[];
+	toLineNumber: number;
+	toVisualColumn: number;
 }
 
 export interface ICursorMoveHelperModel {
@@ -118,6 +129,53 @@ export class CursorMoveHelper {
 			lineNumber: lineNumber,
 			column: column,
 			leftoverVisibleColumns: leftoverVisibleColumns
+		};
+	}
+
+	public columnSelect(model:ICursorMoveHelperModel, fromLineNumber:number, fromVisibleColumn:number, toLineNumber:number, toVisibleColumn:number): IViewColumnSelectResult {
+		let lineCount = Math.abs(toLineNumber - fromLineNumber) + 1;
+		let reversed = (fromLineNumber > toLineNumber);
+		let isRTL = (fromVisibleColumn > toVisibleColumn);
+		let isLTR = (fromVisibleColumn < toVisibleColumn);
+
+		let result: IEditorSelection[] = [];
+
+		// console.log(`fromVisibleColumn: ${fromVisibleColumn}, toVisibleColumn: ${toVisibleColumn}`);
+
+		for (let i = 0; i < lineCount; i++) {
+			let lineNumber = fromLineNumber + (reversed ? -i : i);
+
+			let startColumn = this.columnFromVisibleColumn(model, lineNumber, fromVisibleColumn);
+			let endColumn = this.columnFromVisibleColumn(model, lineNumber, toVisibleColumn);
+			let visibleStartColumn = this.visibleColumnFromColumn(model, lineNumber, startColumn);
+			let visibleEndColumn = this.visibleColumnFromColumn(model, lineNumber, endColumn);
+
+			// console.log(`lineNumber: ${lineNumber}: visibleStartColumn: ${visibleStartColumn}, visibleEndColumn: ${visibleEndColumn}`);
+
+			if (isLTR) {
+				if (visibleStartColumn > toVisibleColumn) {
+					continue;
+				}
+				if (visibleEndColumn < fromVisibleColumn) {
+					continue;
+				}
+			}
+
+			if (isRTL) {
+				if (visibleEndColumn > fromVisibleColumn) {
+					continue;
+				}
+				if (visibleStartColumn < toVisibleColumn) {
+					continue;
+				}
+			}
+
+			result.push(new Selection(lineNumber, startColumn, lineNumber, endColumn));
+		}
+
+		return {
+			viewSelections: result,
+			reversed: reversed
 		};
 	}
 

@@ -6,10 +6,12 @@
 'use strict';
 
 import 'vs/css!./parameterHints';
+import nls = require('vs/nls');
 import {ListenerUnbind} from 'vs/base/common/eventEmitter';
 import {IDisposable, disposeAll} from 'vs/base/common/lifecycle';
 import {TPromise} from 'vs/base/common/winjs.base';
 import {Builder, $} from 'vs/base/browser/builder';
+import aria = require('vs/base/browser/ui/aria/aria');
 import {EventType, ICursorSelectionChangedEvent} from 'vs/editor/common/editorCommon';
 import {IParameterHints, ISignature} from 'vs/editor/common/modes';
 import {ContentWidgetPositionPreference, ICodeEditor, IContentWidget, IContentWidgetPosition} from 'vs/editor/browser/editorBrowser';
@@ -35,6 +37,8 @@ export class ParameterHintsWidget implements IContentWidget {
 	private currentSignature: number;
 	private isDisposed: boolean;
 	private isVisible: boolean;
+	private parameterHints: IParameterHints;
+	private announcedLabel: string;
 	private toDispose: IDisposable[];
 
 	private _onShown: () => void;
@@ -88,7 +92,9 @@ export class ParameterHintsWidget implements IContentWidget {
 		this.toDispose = [];
 
 		this.toDispose.push(this.editor.addListener2(EventType.CursorSelectionChanged,(e: ICursorSelectionChangedEvent) => {
-			this.editor.layoutContentWidget(this);
+			if (this.isVisible) {
+				this.editor.layoutContentWidget(this);
+			}
 		}));
 	}
 
@@ -98,6 +104,7 @@ export class ParameterHintsWidget implements IContentWidget {
 
 		this.modelListenersToRemove.push(this.model.addListener('hint', (e:IHintEvent) => {
 			this.show();
+			this.parameterHints = e.hints;
 			this.render(e.hints);
 			this.currentSignature = e.hints.currentSignature;
 			this.select(this.currentSignature);
@@ -110,6 +117,9 @@ export class ParameterHintsWidget implements IContentWidget {
 
 	private show(): void {
 		if (this.isDisposed) {
+			return;
+		}
+		if (this.isVisible) {
 			return;
 		}
 		this._onShown();
@@ -125,9 +135,14 @@ export class ParameterHintsWidget implements IContentWidget {
 		if (this.isDisposed) {
 			return;
 		}
+		if (!this.isVisible) {
+			return;
+		}
 		this._onHidden();
 
 		this.isVisible = false;
+		this.parameterHints = null;
+		this.announcedLabel = null;
 		this.$el.removeClass('visible');
 		this.editor.layoutContentWidget(this);
 	}
@@ -229,6 +244,15 @@ export class ParameterHintsWidget implements IContentWidget {
 		}
 
 		this.$overloads.text(overloads);
+		if (this.parameterHints && this.parameterHints.signatures[position].parameters[this.parameterHints.currentParameter]) {
+			const labelToAnnounce = this.parameterHints.signatures[position].parameters[this.parameterHints.currentParameter].label;
+			// Select method gets called on every user type while parameter hints are visible.
+			// We do not want to spam the user with same announcements, so we only announce if the current parameter changed.
+			if (this.announcedLabel !== labelToAnnounce) {
+				aria.alert(nls.localize('hint', "{0}, hint", labelToAnnounce));
+				this.announcedLabel = labelToAnnounce;
+			}
+		}
 		this.editor.layoutContentWidget(this);
 	}
 

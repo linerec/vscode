@@ -90,7 +90,7 @@ export class View extends ViewEventHandler implements editorBrowser.IView, IDisp
 		this._renderAnimationFrame = null;
 		this.outgoingEventBus = new EventEmitter();
 
-		var viewController = new ViewController(model, configuration, this.outgoingEventBus);
+		var viewController = new ViewController(model, configuration, this.outgoingEventBus, keybindingService);
 
 		this.listenersToRemove = [];
 		this.listenersToDispose = [];
@@ -171,6 +171,9 @@ export class View extends ViewEventHandler implements editorBrowser.IView, IDisp
 		this.textArea.setAttribute('aria-label', this.context.configuration.editor.ariaLabel);
 		this.textArea.setAttribute('role', 'textbox');
 		this.textArea.setAttribute('aria-multiline', 'true');
+		this.textArea.setAttribute('aria-haspopup', 'false');
+		this.textArea.setAttribute('aria-autocomplete', 'both');
+
 		StyleMutator.setTop(this.textArea, 0);
 		StyleMutator.setLeft(this.textArea, 0);
 		// Give textarea same font size & line height as editor, for the IME case (when the textarea is visible)
@@ -396,8 +399,25 @@ export class View extends ViewEventHandler implements editorBrowser.IView, IDisp
 					return null;
 				}
 				return visibleRanges[0];
+			},
+			flushAnyAccumulatedEvents: () => {
+				this._flushAnyAccumulatedEvents();
 			}
 		};
+	}
+
+	public setAriaActiveDescendant(id:string): void {
+		if (id) {
+			this.textArea.setAttribute('role', 'combobox');
+			if (this.textArea.getAttribute('aria-activedescendant') !== id) {
+				this.textArea.setAttribute('aria-haspopup', 'true');
+				this.textArea.setAttribute('aria-activedescendant', id);
+			}
+		} else {
+			this.textArea.setAttribute('role', 'textbox');
+			this.textArea.removeAttribute('aria-activedescendant');
+			this.textArea.removeAttribute('aria-haspopup');
+		}
 	}
 
 	// --- begin event handlers
@@ -703,10 +723,11 @@ export class View extends ViewEventHandler implements editorBrowser.IView, IDisp
 		if (this._isDisposed) {
 			throw new Error('ViewImpl.layoutContentWidget: View is disposed');
 		}
+
 		this._renderOnce(() => {
-			var position1 = widgetData.position ? widgetData.position.position : null;
-			var preference1 = widgetData.position ? widgetData.position.preference : null;
-			this.contentWidgets.setWidgetPosition(widgetData.widget, position1, preference1);
+			let newPosition = widgetData.position ? widgetData.position.position : null;
+			let newPreference = widgetData.position ? widgetData.position.preference : null;
+			this.contentWidgets.setWidgetPosition(widgetData.widget, newPosition, newPreference);
 		});
 	}
 
@@ -733,10 +754,12 @@ export class View extends ViewEventHandler implements editorBrowser.IView, IDisp
 		if (this._isDisposed) {
 			throw new Error('ViewImpl.layoutOverlayWidget: View is disposed');
 		}
-		this._renderOnce(() => {
-			var preference2 = widgetData.position ? widgetData.position.preference : null;
-			this.overlayWidgets.setWidgetPosition(widgetData.widget, preference2);
-		});
+
+		let newPreference = widgetData.position ? widgetData.position.preference : null;
+		let shouldRender = this.overlayWidgets.setWidgetPosition(widgetData.widget, newPreference);
+		if (shouldRender) {
+			this._scheduleRender();
+		}
 	}
 
 	public removeOverlayWidget(widgetData: editorBrowser.IOverlayWidgetData): void {
@@ -748,12 +771,14 @@ export class View extends ViewEventHandler implements editorBrowser.IView, IDisp
 		});
 	}
 
-	public render(now:boolean): void {
+	public render(now:boolean, everything:boolean): void {
 		if (this._isDisposed) {
 			throw new Error('ViewImpl.render: View is disposed');
 		}
-		// Force a render with a layout event
-		this.layoutProvider.emitLayoutChangedEvent();
+		if (everything) {
+			// Force a render with a layout event
+			this.layoutProvider.emitLayoutChangedEvent();
+		}
 		if (now) {
 			this._flushAccumulatedAndRenderNow();
 		}

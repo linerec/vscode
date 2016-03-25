@@ -301,12 +301,13 @@ export class FileRenderer extends ActionsRenderer implements IRenderer {
 		inputBox.focus();
 
 		let done = async.once<boolean, void>(commit => {
+			tree.clearHighlight();
+
 			if (commit && inputBox.value) {
 				this.state.actionProvider.runAction(tree, stat, editableData.action, { value: inputBox.value });
 			}
 
 			setTimeout(() => {
-				tree.clearHighlight();
 				tree.DOMFocus();
 				lifecycle.disposeAll(toDispose);
 			}, 0);
@@ -862,7 +863,7 @@ export class FileDragAndDrop implements IDragAndDrop {
 							let confirm: IConfirmation = {
 								message: nls.localize('confirmOverwriteMessage', "'{0}' already exists in the destination folder. Do you want to replace it?", source.name),
 								detail: nls.localize('irreversible', "This action is irreversible!"),
-								primaryButton: nls.localize('replaceButtonLabel', "&&Replace")
+								primaryButton: nls.localize({ key: 'replaceButtonLabel', comment: ['&& denotes a mnemonic'] }, "&&Replace")
 							};
 
 							if (this.messageService.confirm(confirm)) {

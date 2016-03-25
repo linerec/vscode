@@ -15,7 +15,7 @@ import {IInstantiationService} from 'vs/platform/instantiation/common/instantiat
 import {IKeybindingService} from 'vs/platform/keybinding/common/keybindingService';
 import {ITelemetryService} from 'vs/platform/telemetry/common/telemetry';
 import {CommonCodeEditor} from 'vs/editor/common/commonCodeEditor';
-import {CommonEditorConfiguration, IIndentationGuesser} from 'vs/editor/common/config/commonEditorConfig';
+import {CommonEditorConfiguration} from 'vs/editor/common/config/commonEditorConfig';
 import {Range} from 'vs/editor/common/core/range';
 import {Selection} from 'vs/editor/common/core/selection';
 import * as editorCommon from 'vs/editor/common/editorCommon';
@@ -79,8 +79,8 @@ export class CodeEditorWidget extends CommonCodeEditor implements editorBrowser.
 		}
 	}
 
-	protected _createConfiguration(options:editorCommon.ICodeEditorWidgetCreationOptions, indentationGuesser:IIndentationGuesser): CommonEditorConfiguration {
-		return new Configuration(options, this.domElement, indentationGuesser);
+	protected _createConfiguration(options:editorCommon.ICodeEditorWidgetCreationOptions): CommonEditorConfiguration {
+		return new Configuration(options, this.domElement);
 	}
 
 	public dispose(): void {
@@ -98,8 +98,8 @@ export class CodeEditorWidget extends CommonCodeEditor implements editorBrowser.
 		var content = model.getLineContent(lineNumber);
 		var tokens = model.getLineTokens(lineNumber, false);
 		var inflatedTokens = editorCommon.LineTokensBinaryEncoding.inflateArr(tokens.getBinaryEncodedTokensMap(), tokens.getBinaryEncodedTokens());
-		var indent = this._configuration.getIndentationOptions();
-		return Colorizer.colorizeLine(content, inflatedTokens, indent.tabSize);
+		var tabSize = model.getOptions().tabSize;
+		return Colorizer.colorizeLine(content, inflatedTokens, tabSize);
 	}
 	public getView(): editorBrowser.IView {
 		return this._view;
@@ -377,13 +377,20 @@ export class CodeEditorWidget extends CommonCodeEditor implements editorBrowser.
 		if (!this.hasView) {
 			return;
 		}
-		this._view.render(true);
+		this._view.render(true, false);
 	}
 
 	public setHiddenAreas(ranges:editorCommon.IRange[]): void {
 		if (this.viewModel) {
 			this.viewModel.setHiddenAreas(ranges);
 		}
+	}
+
+	public setAriaActiveDescendant(id:string): void {
+		if (!this.hasView) {
+			return;
+		}
+		this._view.setAriaActiveDescendant(id);
 	}
 
 	_attachModel(model:editorCommon.IModel): void {
@@ -409,7 +416,7 @@ export class CodeEditorWidget extends CommonCodeEditor implements editorBrowser.
 					}
 				}
 
-				this._view.render(false);
+				this._view.render(false, true);
 				this.hasView = true;
 			});
 		}

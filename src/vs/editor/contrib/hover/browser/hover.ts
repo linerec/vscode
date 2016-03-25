@@ -13,7 +13,6 @@ import * as platform from 'vs/base/common/platform';
 import {TPromise} from 'vs/base/common/winjs.base';
 import {IKeyboardEvent} from 'vs/base/browser/keyboardEvent';
 import {IEditorService} from 'vs/platform/editor/common/editor';
-import {INullService} from 'vs/platform/instantiation/common/instantiation';
 import {IKeybindingService, KbExpr} from 'vs/platform/keybinding/common/keybindingService';
 import {Range} from 'vs/editor/common/core/range';
 import {EditorAction} from 'vs/editor/common/editorAction';
@@ -146,17 +145,14 @@ class ModesHoverController implements editorCommon.IEditorContribution {
 class ShowHoverAction extends EditorAction {
 	static ID = 'editor.action.showHover';
 
-	constructor(descriptor: editorCommon.IEditorActionDescriptorData, editor: editorCommon.ICommonCodeEditor, @INullService ns) {
+	constructor(descriptor: editorCommon.IEditorActionDescriptorData, editor: editorCommon.ICommonCodeEditor) {
 		super(descriptor, editor, Behaviour.TextFocus);
 	}
 
 	public run(): TPromise<any> {
 		const position = this.editor.getPosition();
-		const word = this.editor.getModel().getWordAtPosition(position);
-		if (word) {
-			const range = new Range(position.lineNumber, position.column, position.lineNumber, word.endColumn);
-			(<ModesHoverController>this.editor.getContribution(ModesHoverController.ID)).showContentHover(range, true);
-		}
+		const range = new Range(position.lineNumber, position.column, position.lineNumber, position.column);
+		(<ModesHoverController>this.editor.getContribution(ModesHoverController.ID)).showContentHover(range, true);
 
 		return TPromise.as(null);
 	}

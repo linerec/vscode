@@ -8,10 +8,10 @@ import * as nls from 'vs/nls';
 import Event, {Emitter} from 'vs/base/common/event';
 import {Disposable} from 'vs/base/common/lifecycle';
 import * as objects from 'vs/base/common/objects';
-import * as strings from 'vs/base/common/strings';
-import {Extensions, IConfigurationRegistry} from 'vs/platform/configuration/common/configurationRegistry';
+import * as platform from 'vs/base/common/platform';
+import {Extensions, IConfigurationRegistry, IConfigurationNode} from 'vs/platform/configuration/common/configurationRegistry';
 import {Registry} from 'vs/platform/platform';
-import {DefaultConfig} from 'vs/editor/common/config/defaultConfig';
+import {DefaultConfig, DEFAULT_INDENTATION} from 'vs/editor/common/config/defaultConfig';
 import {HandlerDispatcher} from 'vs/editor/common/controller/handlerDispatcher';
 import * as editorCommon from 'vs/editor/common/editorCommon';
 import {EditorLayoutProvider} from 'vs/editor/common/viewLayout/editorLayoutProvider';
@@ -67,6 +67,7 @@ function cloneInternalEditorOptions(opts: editorCommon.IInternalEditorOptions): 
 		experimentalScreenReader: opts.experimentalScreenReader,
 		rulers: opts.rulers.slice(0),
 		wordSeparators: opts.wordSeparators,
+		selectionClipboard: opts.selectionClipboard,
 		ariaLabel: opts.ariaLabel,
 		lineNumbers: opts.lineNumbers,
 		selectOnLineNumbers: opts.selectOnLineNumbers,
@@ -112,6 +113,7 @@ function cloneInternalEditorOptions(opts: editorCommon.IInternalEditorOptions): 
 		autoClosingBrackets: opts.autoClosingBrackets,
 		formatOnType: opts.formatOnType,
 		suggestOnTriggerCharacters: opts.suggestOnTriggerCharacters,
+		acceptSuggestionOnEnter: opts.acceptSuggestionOnEnter,
 		selectionHighlight: opts.selectionHighlight,
 		outlineMarkers: opts.outlineMarkers,
 		referenceInfos: opts.referenceInfos,
@@ -151,10 +153,6 @@ function cloneInternalEditorOptions(opts: editorCommon.IInternalEditorOptions): 
 			isViewportWrapping: opts.wrappingInfo.isViewportWrapping,
 			wrappingColumn: opts.wrappingInfo.wrappingColumn,
 		},
-		indentInfo: {
-			tabSize: opts.indentInfo.tabSize,
-			insertSpaces: opts.indentInfo.insertSpaces,
-		},
 		observedOuterWidth: opts.observedOuterWidth,
 		observedOuterHeight: opts.observedOuterHeight,
 		lineHeight: opts.lineHeight,
@@ -181,8 +179,7 @@ class InternalEditorOptionsHelper {
 		adjustedLineHeight:number,
 		themeOpts: ICSSConfig,
 		isDominatedByLongLines:boolean,
-		lineCount: number,
-		indentationOptions: editorCommon.IInternalIndentationOptions
+		lineCount: number
 	): editorCommon.IInternalEditorOptions {
 
 		let wrappingColumn = toInteger(opts.wrappingColumn, -1);
@@ -281,8 +278,9 @@ class InternalEditorOptionsHelper {
 			experimentalScreenReader: toBoolean(opts.experimentalScreenReader),
 			rulers: toSortedIntegerArray(opts.rulers),
 			wordSeparators: String(opts.wordSeparators),
+			selectionClipboard: toBoolean(opts.selectionClipboard),
 			ariaLabel: String(opts.ariaLabel),
-			cursorStyle: opts.cursorStyle,
+			cursorStyle: editorCommon.cursorStyleFromString(opts.cursorStyle),
 			fontLigatures: toBoolean(opts.fontLigatures),
 			hideCursorInOverviewRuler: toBoolean(opts.hideCursorInOverviewRuler),
 			scrollBeyondLastLine: toBoolean(opts.scrollBeyondLastLine),
@@ -304,6 +302,7 @@ class InternalEditorOptionsHelper {
 			autoClosingBrackets: toBoolean(opts.autoClosingBrackets),
 			formatOnType: toBoolean(opts.formatOnType),
 			suggestOnTriggerCharacters: toBoolean(opts.suggestOnTriggerCharacters),
+			acceptSuggestionOnEnter: toBoolean(opts.acceptSuggestionOnEnter),
 			selectionHighlight: toBoolean(opts.selectionHighlight),
 			outlineMarkers: toBoolean(opts.outlineMarkers),
 			referenceInfos: toBoolean(opts.referenceInfos),
@@ -318,7 +317,6 @@ class InternalEditorOptionsHelper {
 				lineHeight: adjustedLineHeight
 			},
 			wrappingInfo: wrappingInfo,
-			indentInfo: indentationOptions,
 
 			observedOuterWidth: outerWidth,
 			observedOuterHeight: outerHeight,
@@ -363,6 +361,7 @@ class InternalEditorOptionsHelper {
 			experimentalScreenReader:		(prevOpts.experimentalScreenReader !== newOpts.experimentalScreenReader),
 			rulers:							(!this._numberArraysEqual(prevOpts.rulers, newOpts.rulers)),
 			wordSeparators:					(prevOpts.wordSeparators !== newOpts.wordSeparators),
+			selectionClipboard:				(prevOpts.selectionClipboard !== newOpts.selectionClipboard),
 			ariaLabel:						(prevOpts.ariaLabel !== newOpts.ariaLabel),
 
 			lineNumbers:					(prevOpts.lineNumbers !== newOpts.lineNumbers),
@@ -406,7 +405,6 @@ class InternalEditorOptionsHelper {
 			layoutInfo: 					(!EditorLayoutProvider.layoutEqual(prevOpts.layoutInfo, newOpts.layoutInfo)),
 			stylingInfo: 					(!this._stylingInfoEqual(prevOpts.stylingInfo, newOpts.stylingInfo)),
 			wrappingInfo:					(!this._wrappingInfoEqual(prevOpts.wrappingInfo, newOpts.wrappingInfo)),
-			indentInfo:						(!this._indentInfoEqual(prevOpts.indentInfo, newOpts.indentInfo)),
 			observedOuterWidth:				(prevOpts.observedOuterWidth !== newOpts.observedOuterWidth),
 			observedOuterHeight:			(prevOpts.observedOuterHeight !== newOpts.observedOuterHeight),
 			lineHeight:						(prevOpts.lineHeight !== newOpts.lineHeight),
@@ -447,13 +445,6 @@ class InternalEditorOptionsHelper {
 		return (
 			a.isViewportWrapping === b.isViewportWrapping
 			&& a.wrappingColumn === b.wrappingColumn
-		);
-	}
-
-	private static _indentInfoEqual(a:editorCommon.IInternalIndentationOptions, b:editorCommon.IInternalIndentationOptions): boolean {
-		return (
-			a.insertSpaces === b.insertSpaces
-			&& a.tabSize === b.tabSize
 		);
 	}
 
@@ -546,10 +537,6 @@ interface IValidatedIndentationOptions {
 	insertSpaces: boolean;
 }
 
-export interface IIndentationGuesser {
-	(tabSize:number): editorCommon.IGuessedIndentation;
-}
-
 export interface IElementSizeObserver {
 	startObserving(): void;
 	observe(dimension?:editorCommon.IDimension): void;
@@ -566,22 +553,16 @@ export abstract class CommonEditorConfiguration extends Disposable implements ed
 
 	protected _configWithDefaults:ConfigurationWithDefaults;
 	protected _elementSizeObserver: IElementSizeObserver;
-	private _indentationGuesser:IIndentationGuesser;
-	private _cachedGuessedIndentationTabSize: number;
-	private _cachedGuessedIndentation:editorCommon.IGuessedIndentation;
 	private _isDominatedByLongLines:boolean;
 	private _lineCount:number;
 
 	private _onDidChange = this._register(new Emitter<editorCommon.IConfigurationChangedEvent>());
 	public onDidChange: Event<editorCommon.IConfigurationChangedEvent> = this._onDidChange.event;
 
-	constructor(options:any, elementSizeObserver: IElementSizeObserver = null, indentationGuesser:IIndentationGuesser = null) {
+	constructor(options:editorCommon.IEditorOptions, elementSizeObserver: IElementSizeObserver = null) {
 		super();
 		this._configWithDefaults = new ConfigurationWithDefaults(options);
 		this._elementSizeObserver = elementSizeObserver;
-		this._indentationGuesser = indentationGuesser;
-		this._cachedGuessedIndentationTabSize = -1;
-		this._cachedGuessedIndentation = null;
 		this._isDominatedByLongLines = false;
 		this._lineCount = 1;
 
@@ -634,8 +615,6 @@ export abstract class CommonEditorConfiguration extends Disposable implements ed
 			adjustedLineHeight = Math.round(1.3 * requestedFontSize);
 		}
 
-		let indentationOptions = CommonEditorConfiguration._computeIndentationOptions(opts, (tabSize) => this._guessIndentationOptionsCached(tabSize));
-
 		return InternalEditorOptionsHelper.createInternalEditorOptions(
 			this.getOuterWidth(),
 			this.getOuterHeight(),
@@ -647,8 +626,7 @@ export abstract class CommonEditorConfiguration extends Disposable implements ed
 			adjustedLineHeight,
 			this.readConfiguration(editorClassName, requestedFontFamily, requestedFontSize, adjustedLineHeight),
 			this._isDominatedByLongLines,
-			this._lineCount,
-			indentationOptions
+			this._lineCount
 		);
 	}
 
@@ -665,126 +643,6 @@ export abstract class CommonEditorConfiguration extends Disposable implements ed
 	public setLineCount(lineCount:number): void {
 		this._lineCount = lineCount;
 		this._recomputeOptions();
-	}
-
-	public resetIndentationOptions(): void {
-		this._cachedGuessedIndentationTabSize = -1;
-		this._cachedGuessedIndentation = null;
-		this._recomputeOptions();
-	}
-
-	private _guessIndentationOptionsCached(tabSize:number): editorCommon.IGuessedIndentation {
-		if (!this._cachedGuessedIndentation || this._cachedGuessedIndentationTabSize !== tabSize) {
-			this._cachedGuessedIndentationTabSize = tabSize;
-
-			if (this._indentationGuesser) {
-				this._cachedGuessedIndentation = this._indentationGuesser(tabSize);
-			} else {
-				this._cachedGuessedIndentation = null;
-			}
-		}
-		return this._cachedGuessedIndentation;
-	}
-
-	private static _getValidatedIndentationOptions(opts: editorCommon.IEditorOptions): IValidatedIndentationOptions {
-		let r: IValidatedIndentationOptions = {
-			tabSizeIsAuto: false,
-			tabSize: 4,
-			insertSpacesIsAuto: false,
-			insertSpaces: true
-		};
-
-		if (opts.tabSize === 'auto') {
-			r.tabSizeIsAuto = true;
-		} else {
-			r.tabSize = toInteger(opts.tabSize, 1, 20);
-		}
-
-		if (opts.insertSpaces === 'auto') {
-			r.insertSpacesIsAuto = true;
-		} else {
-			r.insertSpaces = toBoolean(opts.insertSpaces);
-		}
-
-		return r;
-	}
-
-	private static _computeIndentationOptions(allOpts: editorCommon.IEditorOptions, indentationGuesser:IIndentationGuesser): editorCommon.IInternalIndentationOptions {
-		let opts = this._getValidatedIndentationOptions(allOpts);
-
-		let guessedIndentation:editorCommon.IGuessedIndentation = null;
-		if (opts.tabSizeIsAuto || opts.insertSpacesIsAuto) {
-			// We must use the indentation guesser to come up with the indentation options
-			guessedIndentation = indentationGuesser(opts.tabSize);
-		}
-
-		let r: editorCommon.IInternalIndentationOptions = {
-			insertSpaces: opts.insertSpaces,
-			tabSize: opts.tabSize
-		};
-
-		if (guessedIndentation && opts.tabSizeIsAuto) {
-			r.tabSize = guessedIndentation.tabSize;
-		}
-		if (guessedIndentation && opts.insertSpacesIsAuto) {
-			r.insertSpaces = guessedIndentation.insertSpaces;
-		}
-
-		return r;
-	}
-
-	public getIndentationOptions(): editorCommon.IInternalIndentationOptions {
-		return this.editor.indentInfo;
-	}
-
-	private _normalizeIndentationFromWhitespace(str:string): string {
-		let indentation = this.getIndentationOptions(),
-			spacesCnt = 0,
-			i:number;
-
-		for (i = 0; i < str.length; i++) {
-			if (str.charAt(i) === '\t') {
-				spacesCnt += indentation.tabSize;
-			} else {
-				spacesCnt++;
-			}
-		}
-
-		let result = '';
-		if (!indentation.insertSpaces) {
-			let tabsCnt = Math.floor(spacesCnt / indentation.tabSize);
-			spacesCnt = spacesCnt % indentation.tabSize;
-			for (i = 0; i < tabsCnt; i++) {
-				result += '\t';
-			}
-		}
-
-		for (i = 0; i < spacesCnt; i++) {
-			result += ' ';
-		}
-
-		return result;
-	}
-
-	public normalizeIndentation(str:string): string {
-		let firstNonWhitespaceIndex = strings.firstNonWhitespaceIndex(str);
-		if (firstNonWhitespaceIndex === -1) {
-			firstNonWhitespaceIndex = str.length;
-		}
-		return this._normalizeIndentationFromWhitespace(str.substring(0, firstNonWhitespaceIndex)) + str.substring(firstNonWhitespaceIndex);
-	}
-
-	public getOneIndent(): string {
-		let indentation = this.getIndentationOptions();
-		if (indentation.insertSpaces) {
-			let result = '';
-			for (let i = 0; i < indentation.tabSize; i++) {
-				result += ' ';
-			}
-			return result;
-		} else {
-			return '\t';
-		}
 	}
 
 	protected abstract _getEditorClassName(theme:string, fontLigatures:boolean): string;
@@ -850,7 +708,7 @@ export class EditorConfiguration {
 }
 
 let configurationRegistry = <IConfigurationRegistry>Registry.as(Extensions.Configuration);
-configurationRegistry.registerConfiguration({
+let editorConfiguration:IConfigurationNode = {
 	'id': 'editor',
 	'order': 5,
 	'type': 'object',
@@ -895,31 +753,22 @@ configurationRegistry.registerConfiguration({
 			'description': nls.localize('wordSeparators', "Characters that will be used as word separators when doing word related navigations or operations")
 		},
 		'editor.tabSize' : {
-			'oneOf': [
-				{
-					'type': 'number'
-				},
-				{
-					'type': 'string',
-					'enum': ['auto']
-				}
-			],
-			'default': DefaultConfig.editor.tabSize,
+			'type': 'number',
+			'default': DEFAULT_INDENTATION.tabSize,
 			'minimum': 1,
-			'description': nls.localize('tabSize', "Controls the rendering size of tabs in characters. Accepted values: \"auto\", 2, 4, 6, etc. If set to \"auto\", the value will be guessed when a file is opened.")
+			'description': nls.localize('tabSize', "The number of spaces a tab is equal to."),
+			'errorMessage': nls.localize('tabSize.errorMessage', "Expected 'number'. Note that the value \"auto\" has been replaced by the `editor.detectIndentation` setting.")
 		},
 		'editor.insertSpaces' : {
-			'oneOf': [
-				{
-					'type': 'boolean'
-				},
-				{
-					'type': 'string',
-					'enum': ['auto']
-				}
-			],
-			'default': DefaultConfig.editor.insertSpaces,
-			'description': nls.localize('insertSpaces', "Controls if the editor will insert spaces for tabs. Accepted values:  \"auto\", true, false. If set to \"auto\", the value will be guessed when a file is opened.")
+			'type': 'boolean',
+			'default': DEFAULT_INDENTATION.insertSpaces,
+			'description': nls.localize('insertSpaces', "Insert spaces when pressing Tab."),
+			'errorMessage': nls.localize('insertSpaces.errorMessage', "Expected 'boolean'. Note that the value \"auto\" has been replaced by the `editor.detectIndentation` setting.")
+		},
+		'editor.detectIndentation' : {
+			'type': 'boolean',
+			'default': DEFAULT_INDENTATION.detectIndentation,
+			'description': nls.localize('detectIndentation', "When opening a file, `editor.tabSize` and `editor.insertSpaces` will be detected based on the file contents.")
 		},
 		'editor.roundedSelection' : {
 			'type': 'boolean',
@@ -973,6 +822,11 @@ configurationRegistry.registerConfiguration({
 			'type': 'boolean',
 			'default': DefaultConfig.editor.suggestOnTriggerCharacters,
 			'description': nls.localize('suggestOnTriggerCharacters', "Controls if suggestions should automatically show up when typing trigger characters")
+		},
+		'editor.acceptSuggestionOnEnter' : {
+			'type': 'boolean',
+			'default': DefaultConfig.editor.acceptSuggestionOnEnter,
+			'description': nls.localize('acceptSuggestionOnEnter', "Controls if suggestions should be accepted 'Enter' - in addition to 'Tab'. Helps to avoid ambiguity between inserting new lines or accepting suggestions.")
 		},
 		'editor.selectionHighlight' : {
 			'type': 'boolean',
@@ -1037,4 +891,14 @@ configurationRegistry.registerConfiguration({
 			'description': nls.localize('ignoreTrimWhitespace', "Controls if the diff editor shows changes in leading or trailing whitespace as diffs")
 		}
 	}
-});
+};
+
+if (platform.isLinux) {
+	editorConfiguration['properties']['editor.selectionClipboard'] = {
+		'type': 'boolean',
+		'default': DefaultConfig.editor.selectionClipboard,
+		'description': nls.localize('selectionClipboard', "Controls if the Linux primary clipboard should be supported.")
+	};
+}
+
+configurationRegistry.registerConfiguration(editorConfiguration);

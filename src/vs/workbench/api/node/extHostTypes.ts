@@ -688,3 +688,9 @@ export enum StatusBarAlignment {
 	Left = 1,
 	Right = 2
 }
+
+export enum EndOfLine {
+	LF = 1,
+	CRLF = 2
+}
+

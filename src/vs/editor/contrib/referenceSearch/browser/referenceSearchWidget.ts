@@ -446,11 +446,11 @@ export class ReferenceWidget extends PeekViewWidget {
 
 			this.preview = this.instantiationService.createInstance(EmbeddedCodeEditorWidget, div.getHTMLElement(), options, this.editor);
 			this.previewContainer = div.hide();
-			this.previewNotAvailableMessage = new Model(nls.localize('missingPreviewMessage', "no preview available"), editorCommon.DefaultEndOfLine.LF, null);
+			this.previewNotAvailableMessage = new Model(nls.localize('missingPreviewMessage', "no preview available"), Model.DEFAULT_CREATION_OPTIONS, null);
 		});
 
 		// tree
-		container.div({ 'class': 'tree inline' }, (div:Builder) => {
+		container.div({ 'class': 'ref-tree inline' }, (div:Builder) => {
 			var config = {
 				dataSource: this.instantiationService.createInstance(DataSource),
 				renderer: this.instantiationService.createInstance(Renderer, this.editor),

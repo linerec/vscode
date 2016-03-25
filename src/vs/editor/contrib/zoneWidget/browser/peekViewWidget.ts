@@ -51,6 +51,7 @@ export class PeekViewWidget extends ZoneWidget implements IPeekViewService {
 	_headElement:HTMLDivElement;
 	_primaryHeading:HTMLElement;
 	_secondaryHeading:HTMLElement;
+	_metaHeading:HTMLElement;
 	_actionbarWidget:ActionBar;
 	_bodyElement:HTMLDivElement;
 
@@ -99,6 +100,7 @@ export class PeekViewWidget extends ZoneWidget implements IPeekViewService {
 
 		this._primaryHeading = $('span.filename').appendTo(titleElement).getHTMLElement();
 		this._secondaryHeading = $('span.dirname').appendTo(titleElement).getHTMLElement();
+		this._metaHeading = $('span.meta').appendTo(titleElement).getHTMLElement();
 
 		this._actionbarWidget = new ActionBar(
 			$('.peekview-actions').
@@ -125,11 +127,26 @@ export class PeekViewWidget extends ZoneWidget implements IPeekViewService {
 		}
 	}
 
+	public setMetaTitle(value: string): void {
+		if (value) {
+			$(this._metaHeading).safeInnerHtml(value);
+		} else {
+			dom.clearNode(this._metaHeading);
+		}
+	}
+
 	_fillBody(container:HTMLElement):void {
 		// implement me
 	}
 
 	public doLayout(heightInPixel:number):void {
+
+		if (heightInPixel < 0) {
+			// Looks like the view zone got folded away!
+			this.dispose();
+			this.emit(Events.Closed, this);
+			return;
+		}
 
 		var headHeight = Math.ceil(this.editor.getConfiguration().lineHeight * 1.2),
 			bodyHeight = heightInPixel - (headHeight + 2 /* the border-top/bottom width*/);

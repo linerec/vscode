@@ -20,6 +20,9 @@ import * as VersionStatus from './utils/versionStatus';
 
 import TelemetryReporter from 'vscode-extension-telemetry';
 
+import * as nls from 'vscode-nls';
+let localize = nls.loadMessageBundle();
+
 interface CallbackItem {
 	c: (value: any) => void;
 	e: (err: any) => void;
@@ -128,7 +131,7 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 		return this._packageInfo;
 	}
 
-	private logTelemetry(eventName: string, properties?: {[prop: string]: string}) {
+	public logTelemetry(eventName: string, properties?: {[prop: string]: string}) {
 		if (this.telemetryReporter) {
 			this.telemetryReporter.sendTelemetryEvent(eventName, properties);
 		}
@@ -157,12 +160,13 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 		}
 
 		if (!fs.existsSync(modulePath)) {
-			window.showErrorMessage(`The path ${path.dirname(modulePath)} doesn't point to a valid tsserver install. TypeScript language features will be disabled.`);
+			window.showErrorMessage(localize('noServerFound', 'The path {0} doesn\'t point to a valid tsserver install. TypeScript language features will be disabled.', path.dirname(modulePath)));
 			return;
 		}
 
 		let label = this.getTypeScriptVersion(modulePath);
 		let tooltip = modulePath;
+		VersionStatus.enable(!!this.tsdk);
 		VersionStatus.setInfo(label, tooltip);
 
 		this.servicePromise = new Promise<cp.ChildProcess>((resolve, reject) => {
@@ -180,7 +184,7 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 				electron.fork(modulePath, [], options, (err: any, childProcess: cp.ChildProcess) => {
 					if (err) {
 						this.lastError = err;
-						window.showErrorMessage(`TypeScript language server couldn\'t be started. Error message is: ${err.message}`);
+						window.showErrorMessage(localize('serverCouldNotBeStarted', 'TypeScript language server couldn\'t be started. Error message is: {0}'), err.message);
 						this.logTelemetry('error', {message: err.message});
 						return;
 					}
@@ -213,26 +217,26 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 	}
 
 	private getTypeScriptVersion(serverPath: string): string {
-		const unknown = 'unknown';
+		const custom = localize('versionNumber.custom' ,'custom');
 		let p = serverPath.split(path.sep);
 		if (p.length <= 2) {
-			return unknown;
+			return custom;
 		}
 		let p2 = p.slice(0, -2);
 		let modulePath = p2.join(path.sep);
 		let fileName = path.join(modulePath, 'package.json');
 		if (!fs.existsSync(fileName)) {
-			return unknown;
+			return custom;
 		}
 		let contents = fs.readFileSync(fileName).toString();
 		let desc = null;
 		try {
 			desc = JSON.parse(contents);
 		} catch(err) {
-			return unknown;
+			return custom;
 		}
 		if (!desc.version) {
-			return unknown;
+			return custom;
 		}
 		return desc.version;
 	}
@@ -249,10 +253,10 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 			let startService = true;
 			if (this.numberRestarts > 5) {
 				if (diff < 60 * 1000 /* 1 Minutes */) {
-					window.showWarningMessage('The Typescript language service died unexpectedly 5 times in the last 5 Minutes. Please consider to open a bug report.');
+					window.showWarningMessage(localize('serverDied','The Typescript language service died unexpectedly 5 times in the last 5 Minutes. Please consider to open a bug report.'));
 				} else if (diff < 2 * 1000 /* 2 seconds */) {
 					startService = false;
-					window.showErrorMessage('The Typesrript language service died 5 times right after it got started. The service will not be restarted. Please open a bug report.');
+					window.showErrorMessage(localize('serverDiedAfterStart', 'The Typesrript language service died 5 times right after it got started. The service will not be restarted. Please open a bug report.'));
 					this.logTelemetry('serviceExited');
 				}
 			}

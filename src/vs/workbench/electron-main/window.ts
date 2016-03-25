@@ -26,7 +26,7 @@ export interface IWindowState {
 
 export interface IWindowCreationOptions {
 	state: IWindowState;
-	isPluginDevelopmentHost: boolean;
+	extensionDevelopmentPath?: string;
 }
 
 export enum WindowMode {
@@ -35,7 +35,7 @@ export enum WindowMode {
 	Minimized
 }
 
-export const defaultWindowState = function(mode = WindowMode.Normal): IWindowState {
+export const defaultWindowState = function (mode = WindowMode.Normal): IWindowState {
 	return {
 		width: 1024,
 		height: 768,
@@ -96,7 +96,7 @@ export interface IWindowConfiguration extends env.ICommandLineArguments {
 	appSettingsHome: string;
 	appSettingsPath: string;
 	appKeybindingsPath: string;
-	userPluginsHome: string;
+	userExtensionsHome: string;
 	sharedIPCHandle: string;
 	appRoot: string;
 	isBuilt: boolean;
@@ -107,6 +107,7 @@ export interface IWindowConfiguration extends env.ICommandLineArguments {
 	workspacePath?: string;
 	filesToOpen?: IPath[];
 	filesToCreate?: IPath[];
+	filesToDiff?: IPath[];
 	extensionsToInstall: string[];
 	crashReporter: Electron.CrashReporterStartOptions;
 	extensionsGallery: {
@@ -114,8 +115,10 @@ export interface IWindowConfiguration extends env.ICommandLineArguments {
 		cacheUrl: string;
 		itemUrl: string;
 	};
+	extensionTips: { [id: string]: string; };
 	welcomePage: string;
 	releaseNotesUrl: string;
+	licenseUrl: string;
 	productDownloadUrl: string;
 	enableTelemetry: boolean;
 	userEnv: env.IProcessEnvironment;
@@ -142,7 +145,7 @@ export class VSCodeWindow {
 	private _win: Electron.BrowserWindow;
 	private _lastFocusTime: number;
 	private _readyState: ReadyState;
-	private _isPluginDevelopmentHost: boolean;
+	private _extensionDevelopmentPath: string;
 	private windowState: IWindowState;
 	private currentWindowMode: WindowMode;
 
@@ -154,7 +157,7 @@ export class VSCodeWindow {
 	constructor(config: IWindowCreationOptions) {
 		this._lastFocusTime = -1;
 		this._readyState = ReadyState.NONE;
-		this._isPluginDevelopmentHost = config.isPluginDevelopmentHost;
+		this._extensionDevelopmentPath = config.extensionDevelopmentPath;
 		this.whenReadyCallbacks = [];
 
 		// Load window state
@@ -208,7 +211,11 @@ export class VSCodeWindow {
 	}
 
 	public get isPluginDevelopmentHost(): boolean {
-		return this._isPluginDevelopmentHost;
+		return !!this._extensionDevelopmentPath;
+	}
+
+	public get extensionDevelopmentPath(): string {
+		return this._extensionDevelopmentPath;
 	}
 
 	public get config(): IWindowConfiguration {
@@ -290,7 +297,7 @@ export class VSCodeWindow {
 			if (this.pendingLoadConfig) {
 				this.currentConfig = this.pendingLoadConfig;
 
-				delete this.pendingLoadConfig;
+				this.pendingLoadConfig = null;
 			}
 
 			// To prevent flashing, we set the window visible after the page has finished to load but before VSCode is loaded
@@ -389,15 +396,16 @@ export class VSCodeWindow {
 		let configuration: IWindowConfiguration = objects.mixin({}, this.currentConfig);
 		delete configuration.filesToOpen;
 		delete configuration.filesToCreate;
+		delete configuration.filesToDiff;
 		delete configuration.extensionsToInstall;
 
 		// Some configuration things get inherited if the window is being reloaded and we are
 		// in plugin development mode. These options are all development related.
 		if (this.isPluginDevelopmentHost && cli) {
 			configuration.verboseLogging = cli.verboseLogging;
-			configuration.logPluginHostCommunication = cli.logPluginHostCommunication;
-			configuration.debugPluginHostPort = cli.debugPluginHostPort;
-			configuration.debugBrkPluginHost = cli.debugBrkPluginHost;
+			configuration.logExtensionHostCommunication = cli.logExtensionHostCommunication;
+			configuration.debugExtensionHostPort = cli.debugExtensionHostPort;
+			configuration.debugBrkExtensionHost = cli.debugBrkExtensionHost;
 			configuration.pluginHomePath = cli.pluginHomePath;
 		}
 
